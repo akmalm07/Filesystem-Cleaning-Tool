@@ -1,0 +1,56 @@
+# Build Folders
+[Dd]ebug/
+[Rr]elease/
+[xX]64/
+[xX]86/
+[Bb]in/
+[Bb]in-int/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+#vendor/ --optional
+
+# VS Code directories
+.vscode/
+
+# Visual Studio directories
+.vs/
+
+# Build files
+*.obj
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.idb
+*.lib
+*.log
+*.sdf
+*.ipch
+*.tlog
+*.lastbuildstate
+*.iobj
+*.ipdb
+*.txt
+privatefolder/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Auto-generated files
+*.csproj.user
+*.suo
+*.user
+*.filters
+*s.ln
+*.rsuser
+*.sln.docstates
+*.sln.bin
+
+# Premake build folders
+bin/
+bin-int/
+build/
+Makefile
+*.make
+obj/
