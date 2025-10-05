@@ -1,5 +1,5 @@
-project "ProjName"
-    location "ProjName"
+project "Clean"
+    location "."
     kind "ConsoleApp"
     language "C++"
     cppdialect "C++latest"
@@ -11,11 +11,9 @@ project "ProjName"
     -- Include directories
     includedirs 
     {
-        "%{IncludeDir.item}",
+        --"%{IncludeDir.item}",
         "global",            
-        "include",           
-        "shaders",
-        "internal-api(optional)/internal",
+        "include",
         "json",
         "src"
     }
@@ -27,11 +25,6 @@ project "ProjName"
         "include/**.h",     
         "include/**.inl",     
 
-        "internal-api(optional)/internal/include/**.h", 
-        "internal-api(optional)/internal/include/**.inl", 
-        
-        "internal-api(optional)/internal/src/**.cpp", 
-
         "global/**.h",
         "global/**.cpp",
 
@@ -39,6 +32,7 @@ project "ProjName"
 
     }
 
+    --[[
     -- Library directories
     libdirs 
     { 
@@ -50,13 +44,12 @@ project "ProjName"
     { 
         "item",
     }
-
     pchheader "headers.h"
     pchsource "headers.cpp"
-
-    define { "ITEM" }
-
-    flags { "Verbose" }
+   
+    defines { "ITEM" }
+    --]]
+    
 
 
     -- Toolset and compiler settings
