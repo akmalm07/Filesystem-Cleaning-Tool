@@ -227,10 +227,15 @@ namespace clean
 			return;
 		}
 
-		// --- Example Request ---
+		// --- Example && Help Request ---
 		if (it != options.end() && (*it == "-e" || *it == "--see-example"))
 		{
 			print_sort_example();
+			return;
+		}
+		else if (it != options.end() && (*it == "-h" || *it == "--help"))
+		{
+			print_sort_help();
 			return;
 		}
 
@@ -268,12 +273,7 @@ namespace clean
 		{
 			std::string_view opt = options[i];
 
-			if (opt == "--help" || opt == "-h")
-			{
-				print_sort_help();
-				return;
-			}
-			else if ((opt == "--by-type" || opt == "-bt") && !contains_any(optionsFlags, ByType))
+			if ((opt == "--by-type" || opt == "-bt") && !contains_any(optionsFlags, ByType))
 			{
 				optionsFlags |= set_enum<SortOptions::ByTypePrimary>(next_value(i), i);
 			}
