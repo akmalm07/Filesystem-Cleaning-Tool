@@ -100,15 +100,19 @@
     <ClInclude Include="include\enums.h" />
     <ClInclude Include="include\commands.h" />
     <ClInclude Include="include\file_metadata.h" />
+    <ClInclude Include="include\kcluster.h" />
     <ClInclude Include="global\headers.h" />
     <ClInclude Include="include\main.h" />
     <ClInclude Include="include\pritty_text.h" />
+    <ClInclude Include="include\suggestions.h" />
     <ClInclude Include="include\systems.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\pritty_text.cpp" />
     <ClCompile Include="src\commands.cpp" />
     <ClCompile Include="src\file_metadata.cpp" />
+    <ClCompile Include="src\kcluster.cpp" />
+    <ClCompile Include="src\suggestions.cpp" />
     <ClCompile Include="global\headers.cpp">
       <AdditionalOptions>/Ycheaders.h %(AdditionalOptions)</AdditionalOptions>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

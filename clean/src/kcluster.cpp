@@ -35,7 +35,7 @@ namespace clean
 
 	bool KCluster::valid_relative_path(const fs::path& path) const
 	{
-		if (path.empty() || path.is_absolute() || path.has_root_name()) return false;
+		if (path.empty() || path.has_root_path()) return false;
 		for (const auto& part : path)
 			if (part == ".." || part == ".clean" || part == ".git") return false;
 		return true;
@@ -49,7 +49,7 @@ namespace clean
 
 		std::string version;
 		file >> version >> accepted >> rejected;
-		if (!file || version != "CLEAN1") throw std::runtime_error("Unknown clean state version.");
+		if (!file || (version != "CLEAN1" && version != "CLEAN2")) throw std::runtime_error("Unknown clean state version.");
 
 		char type;
 		while (file >> type)
@@ -62,7 +62,7 @@ namespace clean
 				if (!file || !valid_relative_path(fs::path(path)) || !valid_relative_path(fs::path(target))) throw std::runtime_error("Invalid clean state.");
 				declined.insert({ fs::path(path), fs::path(target) });
 			}
-			else if (type == 'S' || type == 'O' || type == 'C')
+			else if (type == 'S' || type == 'O' || type == 'A' || type == 'C')
 			{
 				file >> std::quoted(path) >> record.size >> record.modified;
 				record.path = fs::path(path);
@@ -70,11 +70,11 @@ namespace clean
 				if (type == 'S') snapshot[record.path] = record;
 				else
 				{
-					if (type == 'O')
+					if (type == 'O' || type == 'A')
 					{
 						file >> std::quoted(target);
 						if (!file || !valid_relative_path(fs::path(target))) throw std::runtime_error("Invalid clean state.");
-						observations.push_back({ record, fs::path(target) });
+						observations.push_back({ record, fs::path(target), type == 'A' });
 					}
 					else
 					{
@@ -94,11 +94,11 @@ namespace clean
 		fs::path temporary = stateDir / "state.tmp";
 		std::ofstream file(temporary, std::ios::trunc);
 		if (!file) throw std::runtime_error("Could not save clean state.");
-		file << "CLEAN1 " << accepted << ' ' << rejected << '\n';
+		file << "CLEAN2 " << accepted << ' ' << rejected << '\n';
 		for (const auto& [path, record] : snapshot)
 			file << "S " << std::quoted(path.generic_string()) << ' ' << record.size << ' ' << record.modified << '\n';
 		for (const auto& observation : observations)
-			file << "O " << std::quoted(observation.file.path.generic_string()) << ' ' << observation.file.size << ' ' << observation.file.modified << ' ' << std::quoted(observation.destination.generic_string()) << '\n';
+			file << (observation.approved ? "A " : "O ") << std::quoted(observation.file.path.generic_string()) << ' ' << observation.file.size << ' ' << observation.file.modified << ' ' << std::quoted(observation.destination.generic_string()) << '\n';
 		for (const auto& change : changes)
 			file << "C " << std::quoted(change.file.path.generic_string()) << ' ' << change.file.size << ' ' << change.file.modified << ' ' << std::quoted(change.kind) << ' ' << std::quoted(change.destination.generic_string()) << '\n';
 		for (const auto& [path, destination] : declined)
@@ -106,7 +106,6 @@ namespace clean
 		file.close();
 		if (!file) throw std::runtime_error("Could not save clean state.");
 		fs::path current = stateDir / "state.txt";
-		if (fs::exists(current)) fs::remove(current);
 		fs::rename(temporary, current);
 	}
 
@@ -219,19 +218,6 @@ namespace clean
 		return centers;
 	}
 
-	fs::path KCluster::suggest(const FileRecord& file, const std::vector<Center>& centers) const
-	{
-		if (centers.empty()) return {};
-		Point point = features(file);
-		size_t best = 0;
-		for (size_t j = 1; j < centers.size(); ++j)
-			if (distance(point, centers[j].point) < distance(point, centers[best].point)) best = j;
-		const Center& center = centers[best];
-		if (center.members < 2 || center.confidence < 0.75 || distance(point, center.point) > 1.0) return {};
-		if (file.path.parent_path() == center.destination) return {};
-		return center.destination;
-	}
-
 	void KCluster::poll()
 	{
 		auto current = scan();
@@ -274,6 +260,7 @@ namespace clean
 		snapshot = std::move(current);
 		save();
 		write_graph(cluster());
+		write_suggestion_graph();
 		std::cout << "Scanned " << snapshot.size() << " files. Learned " << observations.size() << " moves. Graph: " << stateDir / "graph.svg" << std::endl;
 	}
 
@@ -285,6 +272,7 @@ namespace clean
 			save();
 			initialized = true;
 			write_graph(cluster());
+			write_suggestion_graph();
 			std::cout << "Baseline saved for " << snapshot.size() << " files. Watching subdirectories only.\n";
 			if (once) return;
 		}
@@ -304,19 +292,21 @@ namespace clean
 	{
 		if (automatic && (accepted < 3 || accepted < 3 * rejected))
 			throw std::runtime_error("Automatic mode needs at least 3 accepted suggestions and 3 accepts per rejection.");
-		auto centers = cluster();
-		if (centers.empty())
+		if (observations.empty())
 		{
 			std::cout << "No moves learned yet. Run clean listen and organize files inside subdirectories first.\n";
 			return;
 		}
 
+		SuggestionModel model(observations);
+		std::vector<std::pair<FileRecord, MoveSuggestion>> proposals;
 		auto current = scan();
 		int suggested = 0, moved = 0;
 		for (const auto& [path, record] : current)
 		{
-			fs::path destination = suggest(record, centers);
-			if (destination.empty() || !valid_relative_path(destination) || declined.contains({ path, destination })) continue;
+			auto suggestion = model.suggest(record);
+			const fs::path& destination = suggestion.destination;
+			if (destination == path.parent_path() || !valid_relative_path(destination) || declined.contains({ path, destination })) continue;
 			fs::path target = root / destination / path.filename();
 			fs::path parent = root;
 			bool unsafe = false;
@@ -327,10 +317,12 @@ namespace clean
 			}
 			if (unsafe) continue;
 			if (fs::exists(target) || fs::is_symlink(target)) continue;
+			proposals.emplace_back(record, suggestion);
 			suggested++;
 			bool approved = automatic;
 			if (!automatic)
 			{
+				std::cout << "Reason: " << suggestion.reason << '\n';
 				std::string answer;
 				while (true)
 				{
@@ -352,9 +344,12 @@ namespace clean
 			if (!fs::is_regular_file(root / path) || fs::is_symlink(root / path) || fs::exists(target) || fs::is_symlink(target)) continue;
 			fs::create_directories(target.parent_path());
 			fs::rename(root / path, target);
-			accepted++;
 			moved++;
-			observations.push_back({ record, destination });
+			if (!automatic)
+			{
+				accepted++;
+				observations.push_back({ record, destination, true });
+			}
 			changes.push_back({ "moved", record, destination / path.filename() });
 			snapshot.erase(path);
 			FileRecord next = record;
@@ -364,7 +359,54 @@ namespace clean
 			std::cout << "Moved " << path << " to " << next.path << '\n';
 		}
 		write_graph(cluster());
+		write_suggestion_graph(proposals);
+		std::cout << "Suggestion graph: " << stateDir / "suggestions.svg" << '\n';
 		std::cout << "Suggested " << suggested << ", moved " << moved << ". Accepted: " << accepted << ", rejected: " << rejected << ".\n";
+	}
+
+	void KCluster::write_suggestion_graph(const std::vector<std::pair<FileRecord, MoveSuggestion>>& proposals) const
+	{
+		SuggestionModel model(observations);
+		auto points = model.plot_examples();
+		for (const auto& [file, proposal] : proposals)
+			points.push_back(model.plot_suggestion(file, proposal));
+
+		size_t lanes = model.cluster_count() + 1;
+		size_t height = 180 + lanes * 54;
+		std::ofstream graph(stateDir / "suggestions.svg", std::ios::trunc);
+		if (!graph) throw std::runtime_error("Could not write suggestion graph.");
+		graph << "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"960\" height=\"" << height
+			<< "\" viewBox=\"0 0 960 " << height << "\">\n";
+		graph << "<rect width=\"100%\" height=\"100%\" fill=\"#111827\"/>"
+			<< "<g fill=\"#e5e7eb\" font-family=\"Arial\" font-size=\"14\">\n"
+			<< "<text x=\"32\" y=\"36\" font-size=\"22\">Clean: filename K-means and move suggestions</text>\n"
+			<< "<text x=\"32\" y=\"64\">Blue: observed move | Green: approved move | Amber: proposed move</text>\n";
+		if (points.empty())
+			graph << "<text x=\"32\" y=\"92\">Observe some moves to populate this graph.</text>\n";
+		for (size_t i = 0; i < lanes; ++i)
+		{
+			size_t y = 130 + i * 54;
+			graph << "<path d=\"M 160 " << y << " H 910\" stroke=\"#374151\"/>"
+				<< "<text x=\"32\" y=\"" << y + 5 << "\">";
+			if (i < model.cluster_count()) graph << "Cluster " << i + 1;
+			else graph << "No name cluster";
+			graph << "</text>\n";
+		}
+		std::map<std::pair<size_t, int>, size_t> overlap;
+		for (const auto& point : points)
+		{
+			double x = 160 + point.similarity * 750;
+			size_t slot = overlap[{ point.cluster, static_cast<int>(x) / 11 }]++;
+			const int offsets[] = { 0, -12, 12, -23, 23 };
+			int y = 130 + static_cast<int>(point.cluster) * 54 + offsets[slot % 5];
+			const char* color = point.proposed ? "#fbbf24" : (point.approved ? "#34d399" : "#60a5fa");
+			graph << "<circle cx=\"" << x << "\" cy=\"" << y << "\" r=\"5\" fill=\"" << color
+				<< "\"><title>" << escape_svg(point.label) << "</title></circle>\n";
+		}
+		graph << "<text x=\"150\" y=\"" << height - 47 << "\">0%</text>"
+			<< "<text x=\"880\" y=\"" << height - 47 << "\">100%</text>"
+			<< "<text x=\"393\" y=\"" << height - 20 << "\">Similarity to name cluster center</text></g></svg>\n";
+		if (!graph) throw std::runtime_error("Could not write suggestion graph.");
 	}
 
 	void KCluster::write_graph(const std::vector<Center>& centers) const
@@ -383,7 +425,7 @@ namespace clean
 			Point point = features(change.file);
 			size_t bucket = 0;
 			for (; bucket < 16 && point[bucket] == 0; ++bucket) {}
-			double x = 60 + std::min(1.0, point[16]) * 790;
+			double x = 60 + (std::min)(1.0, point[16]) * 790;
 			double y = 470 - static_cast<double>(bucket) / 15.0 * 390;
 			std::string color = "#9ca3af";
 			if (!centers.empty())
