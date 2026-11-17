@@ -29,7 +29,15 @@ int main(int argc, char* argv[])
 	std::unique_ptr<clean::Command> cmd = clean::create_command(argv[1]);
 	if (cmd)
 	{
-		cmd->execute(options);
+		try
+		{
+			cmd->execute(options);
+		}
+		catch (const std::exception& e)
+		{
+			clean::print_error(e.what());
+			return 1;
+		}
 	}
 	else
 	{

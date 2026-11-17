@@ -1,6 +1,7 @@
 #include "headers.h"
 #include "commands.h"
 #include "systems.h"
+#include "kcluster.h"
 
 namespace clean
 {
@@ -101,6 +102,14 @@ namespace clean
 		{
 			return std::make_unique<SortCommand>();
 		}
+		else if (cmdStr == "listen")
+		{
+			return std::make_unique<ListenCommand>();
+		}
+		else if (cmdStr == "execute")
+		{
+			return std::make_unique<ExecuteCommand>();
+		}
 		return nullptr;
 	}
 
@@ -112,7 +121,9 @@ namespace clean
 			<< "Available Commands:" << std::endl << std::endl
 			<< "\thelp        Show this help message" << std::endl << std::endl
 			<< "\tversion     Show version information" << std::endl << std::endl
-			<< "\tsort        Sorts all your files/direcotries by given options" << std::endl << std::endl
+			<< "\tsort        Sorts all your files/directories by given options" << std::endl << std::endl
+			<< "\tlisten      Learn from file changes in subdirectories" << std::endl << std::endl
+			<< "\texecute     Suggest moves learned by listen" << std::endl << std::endl
 			<< "Use 'clean [command] --help' for more information on a command" << std::endl << std::endl
 			<< std::endl << std::endl;
 	}
@@ -162,6 +173,46 @@ namespace clean
 		std::cout << "Clean version "<< version << std::endl;
 	}
 
+	void ListenCommand::execute(const std::vector<std::string_view>& options)
+	{
+		bool once = false;
+		int interval = 2;
+		for (size_t i = 0; i < options.size(); ++i)
+		{
+			if (options[i] == "--help" || options[i] == "-h")
+			{
+				std::cout << "Usage: clean listen [--once] [--interval seconds]\n"
+					<< "Run from the top-level directory. Only files in subdirectories are observed.\n";
+				return;
+			}
+			else if (options[i] == "--once") once = true;
+			else if (options[i] == "--interval" && i + 1 < options.size() && is_number(options[i + 1]))
+			{
+				interval = std::stoi(std::string(options[++i]));
+				if (interval < 1 || interval > 3600) throw std::runtime_error("Interval must be between 1 and 3600 seconds.");
+			}
+			else throw std::runtime_error("Unknown listen option. Use clean listen --help.");
+		}
+		KCluster(fs::current_path()).listen(once, interval);
+	}
+
+	void ExecuteCommand::execute(const std::vector<std::string_view>& options)
+	{
+		bool automatic = false;
+		for (auto option : options)
+		{
+			if (option == "--help" || option == "-h")
+			{
+				std::cout << "Usage: clean execute [--auto]\n"
+					<< "Approve moves one by one. --auto requires prior accepted suggestions.\n";
+				return;
+			}
+			else if (option == "--auto") automatic = true;
+			else throw std::runtime_error("Unknown execute option. Use clean execute --help.");
+		}
+		KCluster(fs::current_path()).execute(automatic);
+	}
+
 	void SortCommand::print_sort_help() const
 	{
 		std::cout
@@ -178,7 +229,7 @@ namespace clean
 			<< "\t--move, -m                     Move files instead of copying\n"
 			<< "\t--overwrite, -o                Overwrite existing files\n"
 			<< "\t--no-git, -ngit                Skip Git tracking\n"
-			<< "\t--threads <num>, -t <num>      Number of threads (1–8)\n"
+			<< "\t--threads <num>, -t <num>      Number of threads (1â€“8)\n"
 			<< "\t--help, -h                     Show this help message\n\n"
 			<< "Example:\n"
 			<< "\tclean sort --by-type /path/to/source /path/to/destination\n"

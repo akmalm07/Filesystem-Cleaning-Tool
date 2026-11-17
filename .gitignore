@@ -32,6 +32,9 @@
 *.ipdb
 *.txt
 privatefolder/
+.clean/
+__pycache__/
+*.pyc
 
 # Temporary files
 *.tmp

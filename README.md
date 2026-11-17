@@ -1,76 +1,68 @@
-# Modern C++ Project Template
+# Clean
 
-A modern C++ project template using **Premake5** for flexible builds, external dependencies, and clean architecture separation. Ideal for scalable applications or libraries.
+Clean is a C++ command line tool for organizing files. The existing `sort` command organizes files by type, date, or size. The `listen` and `execute` commands form a small learning organizer: Clean watches how you move files between folders, groups those examples with K-means, and suggests similar moves.
 
+## Build
 
-## Project Structure (Tree view)
+Clean uses C++23 and Premake5. From the project root:
 
-```bash
-premake5.lua # Main premake5 implemantation
-
-src/ # If working with multiple projects, copy this folder and add a new group to premake5.lua
-
-├── ProjName.lua # The project specific implementation of premake 
-
-├── global/ # Global headers, macros, configs
-
-├── include/ # Public API headers
-
-├── json/ # JSON files or third-party JSON support
-
-├── ProjName/ # Main entry point or core logic (e.g., main.cpp)
-
-├── src/ # Core source files
-
-scripts/ # Premake scripts or build utilities
-
-vendor/ # External libraries (imgui, GLFW, etc.)
-
-```
-**Note: If you are planning to rename the project (which you should), be sure to edit the *.lua files, as they define the premake structure for your project
-
-##  Build Instructions
-
-### Requirements
-- C++23 or later (Can be respecified in premkae5.lua)
-- [Premake5](https://premake.github.io/)
-- A supported C++ compiler (MSVC, Clang, or GCC)
-
-### 🔧 Generating the Project
-From the project root:
-
-```bash
-premake5 vs2022        # for Visual Studio 2022
-# OR
-premake5 gmake2        # for GNU Make
-# OR
-premake5 xcode4        # for Xcode
+```sh
+premake5 vs2022
 ```
 
-Then open the generated solution or run the build with your toolchain.
+Open `cleanCLI.sln` and build the `Clean` project. For a direct GCC build:
 
-## External Libraries
-Place external libraries (like ImGui, GLFW, GLEW, etc.) in the vendor/ directory. Make sure to:
+```sh
+g++ -std=c++23 -Iclean/global -Iclean/include clean/src/*.cpp clean/global/*.cpp -o clean
+```
 
-Include them in your Premake scripts/ configuration
+## Learn your folder layout
 
-Set include/lib paths appropriately
+Run these commands **from the top level directory** that contains the folders you want Clean to watch. `listen` observes regular files inside subdirectories; it ignores files directly in the current directory, symlinks, `.git`, and `.clean`.
 
-## Tips for Modularity
-Use include/ for headers you want to expose to other projects.
+```sh
+clean listen
+```
 
-Keep internal headers and source in src/ and lib-api/internal/.
+The first run saves a baseline. Keep it running while you organize files yourself. It scans every two seconds until you press Ctrl+C. Each scan records added, deleted, modified, and moved files. If you prefer manual scans, run `clean listen --once` before and after organizing files. Use `--interval 5` to change the polling interval in seconds.
 
-Avoid putting implementation logic directly in include/.
+Clean writes its data to `.clean/state.txt` and a graph to `.clean/graph.svg` in that directory. Open the SVG in a browser. Each dot is a recorded file change; larger dots are moves. Horizontal position represents file size on a logarithmic scale, vertical position represents an extension bucket, and color shows the nearest learned cluster. Hover over a dot to see the change and file path. Cluster labels show their learned destination folder and example count.
 
-## Notes
-This template is meant to be extended. You can:
+Moves between subdirectories are training examples. Clean matches a move by file size, modification time, and extension, using the filename to resolve matches when it can. Ambiguous moves stay recorded as a deletion and addition. K-means uses file extension and size to group examples, then assigns each group its most common destination. At least two examples and a clear majority are needed before Clean suggests a move.
 
-Add unit tests under a tests/ folder
+## Review suggestions
 
-Extend scripts/ to support additional build platforms or configs
+```sh
+clean execute
+```
 
-Integrate CI/CD or clang-format/linting tools
+Stop `listen` before running `execute` in another shell. Clean asks `Move X to Y? [y/n/q]` for each suggestion. `y` moves it, `n` declines that suggestion for that file, and `q` stops. It skips existing destination files and does not overwrite them. Accepted moves become new examples. Rejected suggestions are saved so they are not repeatedly asked.
 
+Once you have accepted at least three suggestions, with at least three accepts per rejection, you can opt into automatic moves:
 
-## Happy coding! 🎉
+```sh
+clean execute --auto
+```
+
+Automatic mode applies the same confidence and collision checks. The learned model is intentionally simple; inspect the graph and suggestions before enabling it. Remove `.clean` to reset the learning history for that directory.
+
+## Static sorting
+
+The original `sort` command is still available:
+
+```sh
+clean sort source destination --by-type 1 --by-date 2 --move
+clean sort --help
+```
+
+Use `clean --help` for the command list and `clean listen --help` or `clean execute --help` for their options.
+
+## Test
+
+Build the executable, then run the integration test with its absolute path:
+
+```sh
+python tests/test_listen.py /absolute/path/to/clean
+```
+
+The test uses a temporary directory and checks learning, suggestions, accept and reject behavior, automatic mode, collision handling, graph output, and the existing sort command.

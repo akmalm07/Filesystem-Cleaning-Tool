@@ -29,6 +29,18 @@ namespace clean
 			void execute(const std::vector<std::string_view>& options) override;
 	};
 
+	class ListenCommand : public Command
+	{
+	public:
+		void execute(const std::vector<std::string_view>& options) override;
+	};
+
+	class ExecuteCommand : public Command
+	{
+	public:
+		void execute(const std::vector<std::string_view>& options) override;
+	};
+
 	class SortCommand : public Command
 	{
 	public:

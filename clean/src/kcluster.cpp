@@ -35,7 +35,7 @@ namespace clean
 
 	bool KCluster::valid_relative_path(const fs::path& path) const
 	{
-		if (path.empty() || path.is_absolute()) return false;
+		if (path.empty() || path.is_absolute() || path.has_root_name()) return false;
 		for (const auto& part : path)
 			if (part == ".." || part == ".clean" || part == ".git") return false;
 		return true;
@@ -49,7 +49,7 @@ namespace clean
 
 		std::string version;
 		file >> version >> accepted >> rejected;
-		if (version != "CLEAN1") throw std::runtime_error("Unknown clean state version.");
+		if (!file || version != "CLEAN1") throw std::runtime_error("Unknown clean state version.");
 
 		char type;
 		while (file >> type)
@@ -272,8 +272,6 @@ namespace clean
 			if (!used[i]) changes.push_back({ "added", added[i], {} });
 
 		snapshot = std::move(current);
-		if (changes.size() > 500) changes.erase(changes.begin(), changes.end() - 500);
-		if (observations.size() > 2000) observations.erase(observations.begin(), observations.end() - 2000);
 		save();
 		write_graph(cluster());
 		std::cout << "Scanned " << snapshot.size() << " files. Learned " << observations.size() << " moves. Graph: " << stateDir / "graph.svg" << std::endl;
@@ -285,6 +283,7 @@ namespace clean
 		{
 			snapshot = scan();
 			save();
+			initialized = true;
 			write_graph(cluster());
 			std::cout << "Baseline saved for " << snapshot.size() << " files. Watching subdirectories only.\n";
 			if (once) return;
@@ -327,14 +326,20 @@ namespace clean
 				if (fs::is_symlink(parent)) { unsafe = true; break; }
 			}
 			if (unsafe) continue;
-			if (fs::exists(target)) continue;
+			if (fs::exists(target) || fs::is_symlink(target)) continue;
 			suggested++;
 			bool approved = automatic;
 			if (!automatic)
 			{
 				std::string answer;
-				std::cout << "Move " << path << " to " << destination << "? [y/n/q] " << std::flush;
-				if (!std::getline(std::cin, answer) || answer == "q" || answer == "Q") break;
+				while (true)
+				{
+					std::cout << "Move " << path << " to " << destination << "? [y/n/q] " << std::flush;
+					if (!std::getline(std::cin, answer) || answer == "q" || answer == "Q") break;
+					if (answer == "y" || answer == "Y" || answer == "n" || answer == "N") break;
+					std::cout << "Please enter y, n, or q.\n";
+				}
+				if (!std::cin || answer == "q" || answer == "Q") break;
 				approved = answer == "y" || answer == "Y";
 				if (!approved)
 				{
@@ -344,7 +349,7 @@ namespace clean
 					continue;
 				}
 			}
-			if (!fs::is_regular_file(root / path) || fs::is_symlink(root / path) || fs::exists(target)) continue;
+			if (!fs::is_regular_file(root / path) || fs::is_symlink(root / path) || fs::exists(target) || fs::is_symlink(target)) continue;
 			fs::create_directories(target.parent_path());
 			fs::rename(root / path, target);
 			accepted++;
