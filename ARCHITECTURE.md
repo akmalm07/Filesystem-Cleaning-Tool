@@ -2,6 +2,33 @@
 
 Clean is a C++23 command line utility. It keeps learning history under the directory where the user runs it. Premake builds the sources in `clean/src/` and the checked-in Visual Studio project lists the same CLI sources.
 
+## System overview
+
+```mermaid
+flowchart TB
+    CLI["Clean CLI"] --> Sort["sort"]
+    CLI --> Listen["listen"]
+    CLI --> Execute["execute"]
+    Sort --> Static["Group files by type, date, or size"]
+
+    Listen --> Scan["KCluster compares subdirectory snapshots"]
+    Scan -->|Save changes and observed moves| State[(".clean/state.txt")]
+    State -->|Previous snapshot| Scan
+    State --> Activity["Activity K-means"]
+    Activity --> ActivityGraph[".clean/graph.svg"]
+
+    State -->|Observed and approved moves| Names["Filename K-means and word similarity"]
+    State -->|Approved moves| Tree["Approval decision tree"]
+    Execute --> Evaluate["Evaluate files and explain suggested destinations"]
+    Names --> Evaluate
+    Tree --> Evaluate
+
+    Names --> SuggestionGraph[".clean/suggestions.svg"]
+    Evaluate -->|Plot proposals| SuggestionGraph
+    Evaluate --> Review["Review suggestions or apply automatic moves"]
+    Review -->|Save moves and declined destinations| State
+```
+
 ## Commands and ownership
 
 | Component | Responsibility |
@@ -20,19 +47,6 @@ A scan compares the current snapshot with the previous one to record additions, 
 `.clean/graph.svg` shows file activity. Its K-means inputs are a 16-slot extension bucket vector and one log-size feature. The SVG shows size horizontally and extension bucket vertically. The color marks the closest cluster. This graph keeps its original role as a view of filesystem changes.
 
 ## Suggesting moves
-
-```mermaid
-flowchart LR
-    Listen["listen finds a move"] --> History["Saved move examples"]
-    History --> Names["Filename K-means and word similarity"]
-    History --> Tree["Decision tree trained on approved examples"]
-    Names --> Execute["execute explains a suggested destination"]
-    Tree --> Execute
-    Execute --> Approve["User approves and the move succeeds"]
-    Approve --> History
-    Execute --> Decline["User declines"]
-    Decline --> Skip["Skip this file and destination in later runs"]
-```
 
 1. **Read the name.** Strip the final extension, fold ASCII letters to lowercase, and split the remaining name on whitespace, ASCII punctuation, and digits. Repeated words count once. For example, `Invoice.May,2026.PDF` yields the words `invoice` and `may` and the exact extension `.pdf`. Non-ASCII characters are kept as written.
 2. **Fit filename K-means.** Each distinct word defines a dimension. A file's vector has equal, normalized weights for its words. The model picks distinct starting points, then repeatedly assigns examples to the nearest centroid and averages each cluster. It uses up to eight clusters, with the number of observed destinations and unique filename vectors setting the other bounds. The latest move from each source path contributes an example.
