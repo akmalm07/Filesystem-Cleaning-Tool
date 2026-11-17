@@ -2,6 +2,11 @@
 
 Clean is a C++ command line tool for organizing files. The existing `sort` command organizes files by type, date, or size. The `listen` and `execute` commands form a small learning organizer: Clean watches how you move files between folders, groups those examples with K-means, and suggests similar moves.
 
+## Demo Video
+
+https://github.com/user-attachments/assets/61352f1b-345f-496e-8c72-0aecf45db212
+
+
 ## Build
 
 Clean uses C++23 and Premake5. From the project root:
